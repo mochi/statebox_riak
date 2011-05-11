@@ -1,0 +1,11 @@
+{application, statebox_riak,
+ [
+  {description, "statebox + riak-erlang-client boilerplate"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
