@@ -220,6 +220,17 @@ update_value(O, Value, #statebox_riak{resolve_metadatas=ResolveMetadatas}) ->
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+
+put_siblings(Pid, All=[O | _]) ->
+    Bucket = riakc_obj:bucket(O),
+    Key = riakc_obj:key(O),
+    Vclock = riakc_obj:vclock(O),
+    Contents = [{riakc_obj:get_update_metadata(Obj),
+                 riakc_obj:get_value(Obj)} || Obj <- All],
+    fake_statebox_riak_socket:put_raw(
+      Pid,
+      riakc_obj:new_obj(Bucket, Key, Vclock, Contents)).
+
 new_test() ->
     ?assertEqual(
        #statebox_riak{},
@@ -237,11 +248,69 @@ bad_config_test() ->
        put_value(V, riakc_obj:new(B, K), S)),
     ok.
 
+option_test() ->
+    new([{max_queue, 0},
+         {max_queue, undefined},
+         {expire_ms, 0},
+         {expire_ms, undefined},
+         {serialize, fun serialize/1},
+         {deserialize, fun deserialize/1},
+         {resolve_metadatas, fun choose_first_metadata/2},
+         {from_values, fun statebox_orddict:from_values/1}]),
+    ok.
+
 riak_test_() ->
     {setup,
      fun fake_statebox_riak_socket:meck_on/0,
      fun fake_statebox_riak_socket:meck_off/1,
-     [{"README.md example", fun readme_riak/0}]}.
+     [{"README.md example", fun readme_riak/0},
+      {"put_if_changed", fun put_if_changed_riak/0},
+      {"choose_first_metadata", fun choose_first_metadata_riak/0}]}.
+
+choose_first_metadata_riak() ->
+    {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087),
+    S = statebox_riak:new([{riakc_pb_socket, Pid}]),
+    statebox_riak:apply_bucket_ops(
+        <<"friends">>,
+      [{[<<"bob">>],
+        statebox_orddict:f_union(following, [<<"alice">>])}],
+      S),
+    {O1, _} = get_pair(<<"friends">>, <<"bob">>, S),
+    riakc_pb_socket:delete(Pid, <<"friends">>, <<"bob">>),
+    ?assertEqual(
+       [],
+       get_value(<<"friends">>, <<"bob">>, S)),
+    statebox_riak:apply_bucket_ops(
+        <<"friends">>,
+      [{[<<"bob">>],
+        statebox_orddict:f_union(following, [<<"charlie">>])}],
+      S),
+    {O2, _} = get_pair(<<"friends">>, <<"bob">>, S),
+    put_siblings(Pid, [O1, O2]),
+    statebox_riak:apply_bucket_ops(
+        <<"friends">>,
+      [{[<<"bob">>],
+        statebox_orddict:f_union(following, [<<"brogramming">>])}],
+      S),
+    ?assertEqual(
+       [<<"alice">>, <<"brogramming">>, <<"charlie">>],
+       orddict:fetch(
+         following, statebox_riak:get_value(<<"friends">>, <<"bob">>, S))),
+    ok.
+
+put_if_changed_riak() ->
+    {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087),
+    S = statebox_riak:new([{riakc_pb_socket, Pid}]),
+    statebox_riak:apply_bucket_ops(
+        <<"friends">>,
+        [{[<<"bob">>, <<"bob">>],
+          statebox_orddict:f_union(following, [<<"alice">>])}],
+        S),
+    ?assertEqual(
+       [<<"alice">>],
+       orddict:fetch(
+         following, statebox_riak:get_value(<<"friends">>, <<"bob">>, S))),
+    ok.
 
 readme_riak() ->
     {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087),
