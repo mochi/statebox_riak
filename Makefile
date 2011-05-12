@@ -4,7 +4,7 @@ all:
 	@$(REBAR) get-deps compile
 
 edoc:
-	@$(REBAR) doc
+	@$(REBAR) skip_deps=true doc
 
 test:
 	@rm -rf .eunit
@@ -15,7 +15,7 @@ clean:
 	@$(REBAR) clean
 
 build_plt:
-	@$(REBAR) build-plt
+	@$(REBAR) skip_deps=true build-plt
 
 dialyzer:
-	@$(REBAR) dialyze
+	@$(REBAR) skip_deps=true dialyze
