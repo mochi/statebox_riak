@@ -25,7 +25,6 @@ Usage:
          {[<<"alice">>], statebox_orddict:f_union(followers, [<<"bob">>])}],
         S),
     [<<"alice">>] = orddict:fetch(
-        following, statebox_riak:get_value(<<"friends">>, <<"bob">>)),
+        following, statebox_riak:get_value(<<"friends">>, <<"bob">>, S)),
     [<<"bob">>] = orddict:fetch(
-        followers, statebox_riak:get_value(<<"friends">>, <<"alice">>)).
-        
+        followers, statebox_riak:get_value(<<"friends">>, <<"alice">>, S)).

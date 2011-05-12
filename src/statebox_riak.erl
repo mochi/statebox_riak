@@ -108,9 +108,9 @@ pair_value({_Obj, Box}) ->
 -spec apply_bucket_ops(bucket(), [{[key()], op()}], statebox_riak()) -> ok.
 apply_bucket_ops(_Bucket, [], _S) ->
     ok;
-apply_bucket_ops(Bucket, [{Keys, Ops} | Rest], S=#statebox_riak{get=Get}) ->
+apply_bucket_ops(Bucket, [{Keys, Ops} | Rest], S) ->
     F = fun (Key) ->
-                {Obj, Box} = Get(Bucket, Key),
+                {Obj, Box} = get_pair(Bucket, Key, S),
                 ok = put_if_changed(Box, statebox:modify(Ops, Box), Obj, S)
         end,
     lists:foreach(F, Keys),
@@ -195,9 +195,9 @@ parse_option({resolve_metadatas, ResolveMetadatas}, S) ->
 parse_option({from_values, FromValues}, S) ->
     S#statebox_riak{from_values=FromValues};
 parse_option({riakc_pb_socket, Pid}, S) ->
-    S#statebox_riak{
-      get=fun (Bucket, Key) -> riakc_pb_socket:get(Pid, Bucket, Key) end,
-      put=fun (Obj) -> ok = riakc_pb_socket:put(Pid, Obj) end}.
+    Get = fun (Bucket, Key) -> riakc_pb_socket:get(Pid, Bucket, Key) end,
+    Put = fun (Obj) -> ok = riakc_pb_socket:put(Pid, Obj) end,
+    parse_option({get, Get}, parse_option({put, Put}, S)).
 
 resolve_box(_Bucket, _Key, {ok, O},
             #statebox_riak{deserialize=Deserialize, from_values=FromValues}) ->
@@ -224,6 +224,41 @@ new_test() ->
     ?assertEqual(
        #statebox_riak{},
        new([])),
+    ok.
+
+bad_config_test() ->
+    {B, K, V} = {<<"b">>, <<"k">>, <<"v">>},
+    S = new([]),
+    ?assertThrow(
+       get_fun_undefined,
+       get_value(B, K, S)),
+    ?assertThrow(
+       put_fun_undefined,
+       put_value(V, riakc_obj:new(B, K), S)),
+    ok.
+
+riak_test_() ->
+    {setup,
+     fun fake_statebox_riak_socket:meck_on/0,
+     fun fake_statebox_riak_socket:meck_off/1,
+     [{"README.md example", fun readme_riak/0}]}.
+
+readme_riak() ->
+    {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087),
+    S = statebox_riak:new([{riakc_pb_socket, Pid}]),
+    statebox_riak:apply_bucket_ops(
+        <<"friends">>,
+        [{[<<"bob">>], statebox_orddict:f_union(following, [<<"alice">>])},
+         {[<<"alice">>], statebox_orddict:f_union(followers, [<<"bob">>])}],
+        S),
+    ?assertEqual(
+       [<<"alice">>],
+       orddict:fetch(
+         following, statebox_riak:get_value(<<"friends">>, <<"bob">>, S))),
+    ?assertEqual(
+       [<<"bob">>],
+       orddict:fetch(
+         followers, statebox_riak:get_value(<<"friends">>, <<"alice">>, S))),
     ok.
 
 -endif.
