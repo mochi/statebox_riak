@@ -12,7 +12,7 @@ extracted from best practices in our production code at Mochi Media.
 Status:
 -------
 
-Extracted from production code, but not yet used in production.
+Used in production at Mochi Media.
 
 Usage:
 ------
