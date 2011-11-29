@@ -105,9 +105,21 @@ pair_value({_Obj, Box}) ->
 %% @doc For the given <code>[{[key()], op()}]</code> get each key,
 %%      apply the op() to the statebox at that key, and put it back
 %%      if the value changes.
--spec apply_bucket_ops(bucket(), [{[key()], op()}], statebox_riak()) -> ok.
+%%      op can also be a list of operations to apply.  at present
+%%      this isn't done very efficiently because we get/store each pair
+%%      for each op instead of deferring the store until the end
+-spec apply_bucket_ops(bucket(), [{[key()], op() | [op()]}], statebox_riak()) -> ok.
 apply_bucket_ops(_Bucket, [], _S) ->
     ok;
+apply_bucket_ops(Bucket, [{_Keys, []} | Rest], S) ->
+    apply_bucket_ops(Bucket, Rest, S);
+apply_bucket_ops(Bucket, [{Keys, [Ops | RestOps]} | Rest], S) ->
+    F = fun (Key) ->
+                {Obj, Box} = get_pair(Bucket, Key, S),
+                ok = put_if_changed(Box, statebox:modify(Ops, Box), Obj, S)
+        end,
+    lists:foreach(F, Keys),
+    apply_bucket_ops(Bucket, [{Keys, RestOps} | Rest], S);
 apply_bucket_ops(Bucket, [{Keys, Ops} | Rest], S) ->
     F = fun (Key) ->
                 {Obj, Box} = get_pair(Bucket, Key, S),
