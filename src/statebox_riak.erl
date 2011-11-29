@@ -111,7 +111,7 @@ pair_value({_Obj, Box}) ->
 -spec apply_bucket_ops(bucket(), [{[key()], op() | [op()]}], statebox_riak()) -> ok.
 apply_bucket_ops(_Bucket, [], _S) ->
     ok;
-apply_bucket_ops(Bucket, [{Keys, []} | Rest], S) ->
+apply_bucket_ops(Bucket, [{_Keys, []} | Rest], S) ->
     apply_bucket_ops(Bucket, Rest, S);
 apply_bucket_ops(Bucket, [{Keys, [Ops | RestOps]} | Rest], S) ->
     F = fun (Key) ->
