@@ -2,7 +2,8 @@
 %%      extracted from best practices in our code at Mochi.
 -module(statebox_riak).
 -export([new/1, get_pair/3, get_value/3,
-         apply_bucket_ops/3, put_if_changed/4, put_value/3]).
+         apply_bucket_ops/3, apply_and_return/4,
+         put_if_changed/4, put_value/3]).
 -export([choose_first_metadata/2, identity/1, serialize/1, deserialize/1]).
 -export([bad_get_fun/2, bad_put_fun/1]).
 
@@ -115,6 +116,15 @@ apply_bucket_ops(Bucket, [{Keys, Ops} | Rest], S) ->
         end,
     lists:foreach(F, Keys),
     apply_bucket_ops(Bucket, Rest, S).
+
+-spec apply_and_return(bucket(), [key()], op(), statebox_riak()) -> [statebox()].
+apply_and_return(Bucket, Keys, Ops, S) ->
+    [begin
+        {Obj, Box} = get_pair(Bucket, Key, S),
+        NewBox = statebox:modify(Ops, Box),
+        ok = put_if_changed(Box, NewBox, Obj, S),
+        NewBox
+     end || Key <- Keys].
 
 %% @doc Update the value in Obj with NewValue and put it in riak.
 -spec put_value(statebox(), riakc_obj(), statebox_riak()) -> ok.
@@ -265,7 +275,8 @@ riak_test_() ->
      fun fake_statebox_riak_socket:meck_off/1,
      [{"README.md example", fun readme_riak/0},
       {"put_if_changed", fun put_if_changed_riak/0},
-      {"choose_first_metadata", fun choose_first_metadata_riak/0}]}.
+      {"choose_first_metadata", fun choose_first_metadata_riak/0},
+      {"operations results", fun operations_results/0}]}.
 
 choose_first_metadata_riak() ->
     {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087),
@@ -329,5 +340,28 @@ readme_riak() ->
        orddict:fetch(
          followers, statebox_riak:get_value(<<"friends">>, <<"alice">>, S))),
     ok.
+
+
+operations_results() ->
+    {ok, Pid} = riakc_pb_socket:start_link("127.0.0.1", 8087),
+    S = statebox_riak:new([{riakc_pb_socket, Pid}]),
+
+    put_and_assert([<<"bob">>, <<"alice">>], [<<"bob">>, <<"alice">>], S),
+    put_and_assert([<<"bob">>, <<"jim">>], [<<"bob">>, <<"alice">>, <<"jim">>], S),
+
+    ok.
+
+put_and_assert(Followers, ExpectResult, S) ->
+    Result = statebox_riak:apply_and_return(
+        <<"friends">>,
+        [<<"bob">>],
+        statebox_orddict:f_union(followers, Followers),
+        S),
+    ?assertMatch([_], Result),
+    [Box] = Result,
+    ?assertEqual(
+        ExpectResult,
+        orddict:fetch(followers, statebox:value(Box))
+    ).
 
 -endif.
