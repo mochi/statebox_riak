@@ -42,6 +42,8 @@
                   {deserialize, deserialize_fun()} |
                   {riakc_pb_socket, pid()}.
 
+-export_type([statebox_riak/0]).
+
 %% External API
 
 %% @doc Create a new <code>statebox_riak()</code> wrapper, has a number of
